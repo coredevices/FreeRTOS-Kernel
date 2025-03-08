@@ -71,6 +71,9 @@
 #ifndef PORTMACRO_H
 #define PORTMACRO_H
 
+#include <stdint.h>
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -111,89 +114,170 @@ typedef unsigned long UBaseType_t;
 #endif
 /*-----------------------------------------------------------*/
 
+#define portMPU_REGION_CACHEABLE_BUFFERABLE		( 0x07UL << 16UL )
+
+#define portFIRST_CONFIGURABLE_REGION	    ( 4UL )
+#define portLAST_CONFIGURABLE_REGION		( 7UL )
+#define portNUM_CONFIGURABLE_REGIONS		( ( portLAST_CONFIGURABLE_REGION - portFIRST_CONFIGURABLE_REGION ) + 1 )
+
+#define portSWITCH_TO_USER_MODE() __asm volatile ( " mrs r0, control \n orr r0, #1 \n msr control, r0 " :::"r0" )
+
+#define portUSING_MPU                       1
+
+typedef struct MPU_REGION_REGISTERS
+{
+	unsigned portLONG ulRegionBaseAddress;
+	unsigned portLONG ulRegionAttribute;
+} xMPU_REGION_REGISTERS;
+
+/* Plus 1 to create space for the stack region. */
+typedef struct MPU_SETTINGS
+{
+	xMPU_REGION_REGISTERS xRegion[ portNUM_CONFIGURABLE_REGIONS ];
+} xMPU_SETTINGS;
+
 /* Architecture specifics. */
 #define portSTACK_GROWTH			( -1 )
 #define portTICK_PERIOD_MS			( ( TickType_t ) 1000 / configTICK_RATE_HZ )
 #define portBYTE_ALIGNMENT			8
 /*-----------------------------------------------------------*/
 
+/* SVC numbers for various services. */
+#define portSVC_START_SCHEDULER				0
+#define portSVC_YIELD						1
+#define portSVC_RAISE_PRIVILEGE				2
 
 /* Scheduler utilities. */
-extern void vPortYield( void );
-#define portNVIC_INT_CTRL_REG		( * ( ( volatile uint32_t * ) 0xe000ed04 ) )
-#define portNVIC_PENDSVSET_BIT		( 1UL << 28UL )
-#define portYIELD()					vPortYield()
-#define portEND_SWITCHING_ISR( xSwitchRequired ) if( xSwitchRequired ) portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT
+
+#define portYIELD()				__asm volatile ( "	SVC	%0	\n" :: "i" (portSVC_YIELD) )
+#define portYIELD_WITHIN_API()	*(portNVIC_INT_CTRL) = portNVIC_PENDSVSET
+
+#define portNVIC_INT_CTRL			( ( volatile uint32_t *) 0xe000ed04 )
+#define portNVIC_PENDSVSET			0x10000000
+#define portEND_SWITCHING_ISR( xSwitchRequired ) if( xSwitchRequired ) *(portNVIC_INT_CTRL) = portNVIC_PENDSVSET
 #define portYIELD_FROM_ISR( x ) portEND_SWITCHING_ISR( x )
 /*-----------------------------------------------------------*/
 
+
 /* Critical section management. */
+
+/*
+ * Set basepri to portMAX_SYSCALL_INTERRUPT_PRIORITY without effecting other
+ * registers.  r0 is clobbered.
+ */
+#define portSET_INTERRUPT_MASK()						\
+	__asm volatile										\
+	(													\
+		"	mov r0, %0								\n"	\
+		"	msr basepri, r0							\n" \
+		::"i"(configMAX_SYSCALL_INTERRUPT_PRIORITY):"r0"	\
+	)
+
+/*
+ * Set basepri back to 0 without effective other registers.
+ * r0 is clobbered.  FAQ:  Setting BASEPRI to 0 is not a bug.  Please see
+ * http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html before disagreeing.
+ */
+#define portCLEAR_INTERRUPT_MASK()			\
+	__asm volatile							\
+	(										\
+		"	mov r0, #0					\n"	\
+		"	msr basepri, r0				\n"	\
+		:::"r0"								\
+	)
+
+/* FAQ:  Setting BASEPRI to 0 is not a bug.  Please see
+http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html before disagreeing. */
+#define portSET_INTERRUPT_MASK_FROM_ISR()		0;portSET_INTERRUPT_MASK()
+#define portCLEAR_INTERRUPT_MASK_FROM_ISR(x)	portCLEAR_INTERRUPT_MASK();(void)x
+
+
 extern void vPortEnterCritical( void );
 extern void vPortExitCritical( void );
-extern uint32_t ulPortSetInterruptMask( void );
-extern void vPortClearInterruptMask( uint32_t ulNewMaskValue );
-#define portSET_INTERRUPT_MASK_FROM_ISR()		ulPortSetInterruptMask()
-#define portCLEAR_INTERRUPT_MASK_FROM_ISR(x)	vPortClearInterruptMask(x)
-#define portDISABLE_INTERRUPTS()				ulPortSetInterruptMask()
-#define portENABLE_INTERRUPTS()					vPortClearInterruptMask(0)
-#define portENTER_CRITICAL()					vPortEnterCritical()
-#define portEXIT_CRITICAL()						vPortExitCritical()
+extern bool vPortInCritical( void );
+
+#define portDISABLE_INTERRUPTS()	portSET_INTERRUPT_MASK()
+#define portENABLE_INTERRUPTS()		portCLEAR_INTERRUPT_MASK()
+#define portENTER_CRITICAL()		vPortEnterCritical()
+#define portEXIT_CRITICAL()			vPortExitCritical()
+#define portIN_CRITICAL()           vPortInCritical()
 /*-----------------------------------------------------------*/
 
-/* Task function macros as described on the FreeRTOS.org WEB site.  These are
-not necessary for to use this port.  They are defined so the common demo files
-(which build with all the ports) will build. */
+/* Task function macros as described on the FreeRTOS.org WEB site. */
 #define portTASK_FUNCTION_PROTO( vFunction, pvParameters ) void vFunction( void *pvParameters )
 #define portTASK_FUNCTION( vFunction, pvParameters ) void vFunction( void *pvParameters )
-/*-----------------------------------------------------------*/
 
 /* Tickless idle/low power functionality. */
 #ifndef portSUPPRESS_TICKS_AND_SLEEP
 	extern void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime );
 	#define portSUPPRESS_TICKS_AND_SLEEP( xExpectedIdleTime ) vPortSuppressTicksAndSleep( xExpectedIdleTime )
 #endif
-/*-----------------------------------------------------------*/
 
-/* Architecture specific optimisations. */
-#ifndef configUSE_PORT_OPTIMISED_TASK_SELECTION
-	#define configUSE_PORT_OPTIMISED_TASK_SELECTION 1
-#endif
+extern uintptr_t ulPortGetStackedPC( StackType_t *pxTopOfStack );
+#define portGET_STACKED_PC( pxTopOfStack ) ulPortGetStackedPC( pxTopOfStack )
 
-#if configUSE_PORT_OPTIMISED_TASK_SELECTION == 1
+extern uintptr_t ulPortGetStackedLR( StackType_t *pxTopOfStack );
+#define portGET_STACKED_LR( pxTopOfStack ) ulPortGetStackedLR( pxTopOfStack )
 
-	/* Generic helper function. */
-	__attribute__( ( always_inline ) ) static inline uint8_t ucPortCountLeadingZeros( uint32_t ulBitmap )
-	{
-	uint8_t ucReturn;
+// Call from the tick handler to bump up the tick count in case the system
+// fell behind and missed some tick interrupts (i.e. while running in an emulator).
+extern bool vPortCorrectTicks(void);
 
-		__asm volatile ( "clz %0, %1" : "=r" ( ucReturn ) : "r" ( ulBitmap ) );
-		return ucReturn;
-	}
+//! The indexes of the registers as stored on a task's stack by FreeRTOS
+typedef enum {
+	portTASK_REG_INDEX_CONTROL = 0,
+	portTASK_REG_INDEX_R4,
+	portTASK_REG_INDEX_R5,
+	portTASK_REG_INDEX_R6,
+	portTASK_REG_INDEX_R7,
+	portTASK_REG_INDEX_R8,
+	portTASK_REG_INDEX_R9,
+	portTASK_REG_INDEX_R10,
+	portTASK_REG_INDEX_R11,
+	portTASK_REG_INDEX_R0,
+	portTASK_REG_INDEX_R1,
+	portTASK_REG_INDEX_R2,
+	portTASK_REG_INDEX_R3,
+	portTASK_REG_INDEX_R12,
+	portTASK_REG_INDEX_LR,
+	portTASK_REG_INDEX_PC,
+	portTASK_REG_INDEX_XPSR,
+} xTASK_REG;
 
-	/* Check the configuration. */
-	#if( configMAX_PRIORITIES > 32 )
-		#error configUSE_PORT_OPTIMISED_TASK_SELECTION can only be set to 1 when configMAX_PRIORITIES is less than or equal to 32.  It is very rare that a system requires more than 10 to 15 difference priorities as tasks that share a priority will time slice.
-	#endif
+//! The indexes of the registers when stored in canonical form as stored in xPORT_TASK_INFO.registers
+typedef enum {
+	portCANONICAL_REG_INDEX_R0 = 0,
+	portCANONICAL_REG_INDEX_R1,
+	portCANONICAL_REG_INDEX_R2,
+	portCANONICAL_REG_INDEX_R3,
+	portCANONICAL_REG_INDEX_R4,
+	portCANONICAL_REG_INDEX_R5,
+	portCANONICAL_REG_INDEX_R6,
+	portCANONICAL_REG_INDEX_R7,
+	portCANONICAL_REG_INDEX_R8,
+	portCANONICAL_REG_INDEX_R9,
+	portCANONICAL_REG_INDEX_R10,
+	portCANONICAL_REG_INDEX_R11,
+	portCANONICAL_REG_INDEX_R12,
+	portCANONICAL_REG_INDEX_SP,
+	portCANONICAL_REG_INDEX_LR,
+	portCANONICAL_REG_INDEX_PC,
+	portCANONICAL_REG_INDEX_XPSR,
+	portCANONICAL_REG_COUNT,
+} xCANONICAL_REG;
 
-	/* Store/clear the ready priorities in a bit map. */
-	#define portRECORD_READY_PRIORITY( uxPriority, uxReadyPriorities ) ( uxReadyPriorities ) |= ( 1UL << ( uxPriority ) )
-	#define portRESET_READY_PRIORITY( uxPriority, uxReadyPriorities ) ( uxReadyPriorities ) &= ~( 1UL << ( uxPriority ) )
+typedef struct PORT_TASK_INFO
+{
+	portCHAR const		*pcName;
+	void				*taskHandle; // Can be compared to xTaskGetCurrentTaskHandle()
+	unsigned portLONG	registers[portCANONICAL_REG_COUNT];	// task registers
+} xPORT_TASK_INFO;
 
-	/*-----------------------------------------------------------*/
+extern void vPortGetTaskInfo( void *xTaskHandle, char const * pcTaskName, StackType_t *pxTopOfStack,
+							 xPORT_TASK_INFO *pxTaskInfo );
 
-	#define portGET_HIGHEST_PRIORITY( uxTopPriority, uxReadyPriorities ) uxTopPriority = ( 31 - ucPortCountLeadingZeros( ( uxReadyPriorities ) ) )
-
-#endif /* configUSE_PORT_OPTIMISED_TASK_SELECTION */
-
-/*-----------------------------------------------------------*/
-
-#ifdef configASSERT
-	void vPortValidateInterruptPriority( void );
-	#define portASSERT_IF_INTERRUPT_PRIORITY_INVALID() 	vPortValidateInterruptPriority()
-#endif
-
-/* portNOP() is not required by this port. */
-#define portNOP()
+extern uint32_t ulPortGetStackedControl( StackType_t* pxTopOfStack );
+#define portGET_STACKED_CONTROL( pxTopOfStack ) ulPortGetStackedControl( pxTopOfStack )
 
 #ifdef __cplusplus
 }
