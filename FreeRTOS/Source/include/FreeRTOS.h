@@ -215,6 +215,14 @@ extern "C" {
 	#define configUSE_MUTEXES 0
 #endif
 
+#ifndef configUSE_LIGHT_MUTEXES
+   #define configUSE_LIGHT_MUTEXES 0
+#endif
+
+#ifndef configUSE_RECURSIVE_LIGHT_MUTEXES
+   #define configUSE_RECURSIVE_LIGHT_MUTEXES 0
+#endif
+
 #ifndef configUSE_TIMERS
 	#define configUSE_TIMERS 0
 #endif
@@ -435,6 +443,50 @@ extern "C" {
 
 #ifndef traceTAKE_MUTEX_RECURSIVE_FAILED
 	#define traceTAKE_MUTEX_RECURSIVE_FAILED( pxMutex )
+#endif
+
+#ifndef traceCREATE_LIGHT_MUTEX
+  #define traceCREATE_LIGHT_MUTEX( pxNewQueue )
+#endif
+
+#ifndef traceCREATE_LIGHT_MUTEX_FAILED
+  #define traceCREATE_LIGHT_MUTEX_FAILED()
+#endif
+
+#ifndef traceUNLOCK_LIGHT_MUTEX_RECURSIVE
+  #define traceUNLOCK_LIGHT_MUTEX_RECURSIVE( pxMutex )
+#endif
+
+#ifndef traceUNLOCK_LIGHT_MUTEX_RECURSIVE_FAILED
+  #define traceUNLOCK_LIGHT_MUTEX_RECURSIVE_FAILED( pxMutex )
+#endif
+
+#ifndef traceLOCK_LIGHT_MUTEX_RECURSIVE
+  #define traceLOCK_LIGHT_MUTEX_RECURSIVE( pxMutex )
+#endif
+
+#ifndef traceLOCK_LIGHT_MUTEX_RECURSIVE_FAILED
+  #define traceLOCK_LIGHT_MUTEX_RECURSIVE_FAILED( pxMutex )
+#endif
+
+#ifndef traceLOCK_LIGHT_MUTEX
+  #define traceLOCK_LIGHT_MUTEX( pxMutex )
+#endif
+
+#ifndef traceLOCK_LIGHT_MUTEX_FAILED
+  #define traceLOCK_LIGHT_MUTEX_FAILED( pxMutex )
+#endif
+
+#ifndef traceLOCK_LIGHT_MUTEX_BLOCKED
+  #define traceLOCK_LIGHT_MUTEX_BLOCKED( pxMutex )
+#endif
+
+#ifndef traceUNLOCK_LIGHT_MUTEX
+  #define traceUNLOCK_LIGHT_MUTEX( pxMutex )
+#endif
+
+#ifndef traceUNLOCK_LIGHT_MUTEX_FAILED
+  #define traceUNLOCK_LIGHT_MUTEX_FAILED( pxMutex )
 #endif
 
 #ifndef traceCREATE_COUNTING_SEMAPHORE

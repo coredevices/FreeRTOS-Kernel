@@ -491,6 +491,7 @@ int8_t *pcAllocatedBuffer;
 	BaseType_t xReturn;
 	Queue_t * const pxMutex = ( Queue_t * ) xMutex;
 
+		configASSERT_SAFE_TO_CALL_FREERTOS_API();
 		configASSERT( pxMutex );
 
 		/* If this is the task that holds the mutex then pxMutexHolder will not
@@ -546,6 +547,7 @@ int8_t *pcAllocatedBuffer;
 	BaseType_t xReturn;
 	Queue_t * const pxMutex = ( Queue_t * ) xMutex;
 
+		configASSERT_SAFE_TO_CALL_WAIT_FREERTOS_API(xTicksToWait);
 		configASSERT( pxMutex );
 
 		/* Comments regarding mutual exclusion as per those within
@@ -616,6 +618,7 @@ BaseType_t xEntryTimeSet = pdFALSE, xYieldRequired;
 TimeOut_t xTimeOut;
 Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
+	configASSERT_SAFE_TO_CALL_WAIT_FREERTOS_API(xTicksToWait);
 	configASSERT( pxQueue );
 	configASSERT( !( ( pvItemToQueue == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
 	configASSERT( !( ( xCopyPosition == queueOVERWRITE ) && ( pxQueue->uxLength != 1 ) ) );
@@ -1061,6 +1064,7 @@ BaseType_t xReturn;
 UBaseType_t uxSavedInterruptStatus;
 Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
+	configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 	configASSERT( pxQueue );
 	configASSERT( !( ( pvItemToQueue == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
 	configASSERT( !( ( xCopyPosition == queueOVERWRITE ) && ( pxQueue->uxLength != 1 ) ) );
@@ -1372,6 +1376,7 @@ TimeOut_t xTimeOut;
 int8_t *pcOriginalReadPosition;
 Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
+	configASSERT_SAFE_TO_CALL_WAIT_FREERTOS_API(xTicksToWait);
 	configASSERT( pxQueue );
 	configASSERT( !( ( pvBuffer == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
 	#if ( ( INCLUDE_xTaskGetSchedulerState == 1 ) || ( configUSE_TIMERS == 1 ) )
@@ -1558,6 +1563,7 @@ BaseType_t xReturn;
 UBaseType_t uxSavedInterruptStatus;
 Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
+	configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 	configASSERT( pxQueue );
 	configASSERT( !( ( pvBuffer == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
 
@@ -1646,6 +1652,7 @@ UBaseType_t uxSavedInterruptStatus;
 int8_t *pcOriginalReadPosition;
 Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 
+	configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 	configASSERT( pxQueue );
 	configASSERT( !( ( pvBuffer == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
 	configASSERT( pxQueue->uxItemSize != 0 ); /* Can't peek a semaphore. */
@@ -1731,6 +1738,7 @@ UBaseType_t uxQueueMessagesWaitingFromISR( const QueueHandle_t xQueue )
 {
 UBaseType_t uxReturn;
 
+	configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 	configASSERT( xQueue );
 
 	uxReturn = ( ( Queue_t * ) xQueue )->uxMessagesWaiting;
@@ -2017,6 +2025,7 @@ BaseType_t xQueueIsQueueEmptyFromISR( const QueueHandle_t xQueue )
 {
 BaseType_t xReturn;
 
+	configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 	configASSERT( xQueue );
 	if( ( ( Queue_t * ) xQueue )->uxMessagesWaiting == ( UBaseType_t ) 0 )
 	{
@@ -2056,6 +2065,7 @@ BaseType_t xQueueIsQueueFullFromISR( const QueueHandle_t xQueue )
 {
 BaseType_t xReturn;
 
+	configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 	configASSERT( xQueue );
 	if( ( ( Queue_t * ) xQueue )->uxMessagesWaiting == ( ( Queue_t * ) xQueue )->uxLength )
 	{
@@ -2526,6 +2536,7 @@ BaseType_t xReturn;
 	{
 	QueueSetMemberHandle_t xReturn = NULL;
 
+		configASSERT_SAFE_TO_CALL_WAIT_FREERTOS_API(xTicksToWait);
 		( void ) xQueueGenericReceive( ( QueueHandle_t ) xQueueSet, &xReturn, xTicksToWait, pdFALSE ); /*lint !e961 Casting from one typedef to another is not redundant. */
 		return xReturn;
 	}
@@ -2539,6 +2550,7 @@ BaseType_t xReturn;
 	{
 	QueueSetMemberHandle_t xReturn = NULL;
 
+		configASSERT_SAFE_TO_CALL_FREERTOS_FROMISR_API();
 		( void ) xQueueReceiveFromISR( ( QueueHandle_t ) xQueueSet, &xReturn, NULL ); /*lint !e961 Casting from one typedef to another is not redundant. */
 		return xReturn;
 	}
@@ -2598,15 +2610,3 @@ BaseType_t xReturn;
 	}
 
 #endif /* configUSE_QUEUE_SETS */
-
-
-
-
-
-
-
-
-
-
-
-

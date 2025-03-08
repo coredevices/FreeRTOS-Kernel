@@ -173,6 +173,8 @@ typedef struct xTASK_STATUS
 	UBaseType_t uxBasePriority;		/* The priority to which the task will return if the task's current priority has been inherited to avoid unbounded priority inversion when obtaining a mutex.  Only valid if configUSE_MUTEXES is defined as 1 in FreeRTOSConfig.h. */
 	uint32_t ulRunTimeCounter;		/* The total run time allocated to the task so far, as defined by the run time stats clock.  See http://www.freertos.org/rtos-run-time-stats.html.  Only valid when configGENERATE_RUN_TIME_STATS is defined as 1 in FreeRTOSConfig.h. */
 	uint16_t usStackHighWaterMark;	/* The minimum amount of stack space that has remained for the task since the task was created.  The closer this value is to zero the closer the task has come to overflowing its stack. */
+	StackType_t *pxStack;			/* Start of the stack block (lowest address) */
+	StackType_t *pxTopOfStack;		/* Current stack pointer */
 } TaskStatus_t;
 
 /* Possible return values for eTaskConfirmSleepModeStatus(). */
@@ -2009,6 +2011,26 @@ eSleepModeStatus eTaskConfirmSleepModeStatus( void ) PRIVILEGED_FUNCTION;
  * taken and return the handle of the task that has taken the mutex.
  */
 void *pvTaskIncrementMutexHeldCount( void );
+
+uintptr_t ulTaskDebugGetStackedPC( TaskHandle_t xTask );
+uintptr_t ulTaskDebugGetStackedLR( TaskHandle_t xTask );
+uint32_t ulTaskDebugGetStackedControl( TaskHandle_t xTask );
+
+/*
+ * Defines the prototype to which the vTaskListWalk callback must conform.
+ */
+typedef void (*TaskInfoFunction_t)( const xPORT_TASK_INFO * const xTaskInfo, void * xData);
+
+/*
+ * Get info on all tasks. For each task, the pxTaskInfoCode callback will be called with a pointer to
+ * the task info and the provided xData reference pointer.
+ */
+void vTaskListWalk( TaskInfoFunction_t pxTaskInfoCode, void *xData);
+
+/*
+ * Get the start of the stack region for a task (the lowest address)
+ */
+uintptr_t ulTaskGetStackStart( TaskHandle_t xTask );
 
 #ifdef __cplusplus
 }
