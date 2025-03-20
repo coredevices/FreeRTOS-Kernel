@@ -1137,6 +1137,21 @@ const char * pcTimerGetTimerName( TimerHandle_t xTimer ); /*lint !e971 Unqualifi
 BaseType_t xTimerCreateTimerTask( void ) PRIVILEGED_FUNCTION;
 BaseType_t xTimerGenericCommand( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue, BaseType_t * const pxHigherPriorityTaskWoken, const TickType_t xTicksToWait ) PRIVILEGED_FUNCTION;
 
+/**
+ * TickType_t xTimerGetExpiryTime( TimerHandle_t xTimer );
+ *
+ * Returns the time in ticks at which the timer will expire.  If this is less
+ * than the current tick count then the expiry time has overflowed from the
+ * current time.
+ *
+ * @param xTimer The handle of the timer being queried.
+ *
+ * @return If the timer is running then the time in ticks at which the timer
+ * will next expire is returned.  If the timer is not running then the return
+ * value is undefined.
+ */
+TickType_t xTimerGetExpiryTime( TimerHandle_t xTimer ) PRIVILEGED_FUNCTION;
+
 #ifdef __cplusplus
 }
 #endif
