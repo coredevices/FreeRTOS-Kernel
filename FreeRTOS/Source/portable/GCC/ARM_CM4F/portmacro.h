@@ -232,6 +232,10 @@ extern uintptr_t ulPortGetStackedLR( StackType_t *pxTopOfStack );
 // fell behind and missed some tick interrupts (i.e. while running in an emulator).
 extern bool vPortCorrectTicks(void);
 
+// Platform override mechanism to use an alternate (non-SysTick) timer
+// source.
+extern bool vPortEnableTimer(void);
+
 //! The indexes of the registers as stored on a task's stack by FreeRTOS
 typedef enum {
 	portTASK_REG_INDEX_CONTROL = 0,
