@@ -101,7 +101,6 @@ typedef struct LightMutexDefinition
 	TaskHandle_t pxMutexHolder;
 
 	int16_t uxRecursiveCallCount;	/*< Maintains a count of the number of times a recursive mutex has been recursively 'taken'. */
-	int8_t uxLocked;
 
 	List_t xTasksWaitingToLock;		/*< List of tasks that are blocked waiting to lock this mutex.  Stored in priority order. */
 } LightMutex_t;
@@ -129,8 +128,6 @@ LightMutexHandle_t xLightMutexCreate( void ) {
 		pxNewMutex->pxMutexHolder = NULL;
 		pxNewMutex->uxRecursiveCallCount = 0;
 
-		pxNewMutex->uxLocked = pdFALSE;
-
 		/* Ensure the event queues start with the correct state. */
 		vListInitialise( &( pxNewMutex->xTasksWaitingToLock ) );
 	}
@@ -152,10 +149,14 @@ BaseType_t xLightMutexUnlock( LightMutexHandle_t xMutex ) {
 	configASSERT_SAFE_TO_CALL_FREERTOS_API();
 	configASSERT( pxMutex );
 
+	// XXX: only enter a critical section if we're contended -- which we
+	// can know by having an atomic_add 'waiters' at the beginning of
+	// lock/unlock sequence
+	
 	taskENTER_CRITICAL();
 	{
 		/* Check if the mutex is ready to be unlocked */
-		if( pxMutex->uxLocked == pdTRUE )
+		if( pxMutex->pxMutexHolder )
 		{
 			traceUNLOCK_LIGHT_MUTEX( pxMutex );
 			xYieldRequired = prvMutexSetUnlocked( pxMutex );
@@ -224,20 +225,23 @@ BaseType_t xLightMutexLock( LightMutexHandle_t xMutex, TickType_t xTicksToWait )
 
 	for( ;; )
 	{
-		taskENTER_CRITICAL();
+		//taskENTER_CRITICAL();
 		{
 			/* Is the mutex unlocked yet? To be running the calling task
 			must be the highest priority task wanting to acquire the mutex. */
-			if( pxMutex->uxLocked == pdFALSE )
+			TaskHandle_t nobody = NULL;
+			// XXX: should incr mutex held count first, then disinherit if we did not lock
+			bool did_lock = __atomic_compare_exchange_n(&pxMutex->pxMutexHolder, &nobody, xTaskGetCurrentTaskHandle(), false /* weak */, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+			__atomic_signal_fence(__ATOMIC_RELAXED);
+			if( did_lock )
 			{
 				traceUNLOCK_LIGHT_MUTEX( pxMutex )
-				pxMutex->uxLocked = pdTRUE;
 
 				/* Record the information required to implement
 				priority inheritance should it become necessary. */
-				pxMutex->pxMutexHolder = pvTaskIncrementMutexHeldCount();
+				(void )pvTaskIncrementMutexHeldCount();
 
-				taskEXIT_CRITICAL();
+				//taskEXIT_CRITICAL();
 				return pdPASS;
 			}
 			else
@@ -246,7 +250,7 @@ BaseType_t xLightMutexLock( LightMutexHandle_t xMutex, TickType_t xTicksToWait )
 				{
 					/* The mutex was locked and no block time is specified (or
 					the block time has expired) so leave now. */
-					taskEXIT_CRITICAL();
+					//taskEXIT_CRITICAL();
 					traceLOCK_LIGHT_MUTEX_FAILED( pxMutex );
 					return errQUEUE_EMPTY;
 				}
@@ -264,7 +268,7 @@ BaseType_t xLightMutexLock( LightMutexHandle_t xMutex, TickType_t xTicksToWait )
 				}
 			}
 		}
-		taskEXIT_CRITICAL();
+		//taskEXIT_CRITICAL();
 
 		/* Interrupts and other tasks can send to and receive from the queue
 		now the critical section has been exited. */
@@ -480,8 +484,6 @@ static BaseType_t prvMutexSetUnlocked( LightMutex_t * const pxMutex )
 	xReturn = xTaskPriorityDisinherit( pxMutex->pxMutexHolder );
 	pxMutex->pxMutexHolder = NULL;
 
-	pxMutex->uxLocked = pdFALSE;
-
 	return xReturn;
 }
 
@@ -490,7 +492,7 @@ static BaseType_t prvIsMutexLocked( const LightMutex_t *pxMutex ) {
 
 	taskENTER_CRITICAL();
 	{
-		if( pxMutex->uxLocked == pdTRUE )
+		if( pxMutex->pxMutexHolder != NULL )
 		{
 			xReturn = pdTRUE;
 		}
