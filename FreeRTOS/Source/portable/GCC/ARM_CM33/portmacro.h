@@ -223,8 +223,8 @@ extern bool vPortInCritical( void );
 #define portTASK_FUNCTION( vFunction, pvParameters ) void vFunction( void *pvParameters )
 
 /* TCB setup */
-extern void portSetupTCB(void);
-#define portSETUP_TCB(pxTCB) portSetupTCB()
+extern void portSetupTCB(void *pxTCB);
+#define portSETUP_TCB(pxTCB) portSetupTCB(pxTCB)
 
 /* Tickless idle/low power functionality. */
 #ifndef portSUPPRESS_TICKS_AND_SLEEP
@@ -257,6 +257,7 @@ typedef enum {
 	portTASK_REG_INDEX_R9,
 	portTASK_REG_INDEX_R10,
 	portTASK_REG_INDEX_R11,
+	portTASK_REG_INDEX_PSPLIM,
 	portTASK_REG_EXC_RETURN,
 	portTASK_REG_INDEX_R0,
 	portTASK_REG_INDEX_R1,

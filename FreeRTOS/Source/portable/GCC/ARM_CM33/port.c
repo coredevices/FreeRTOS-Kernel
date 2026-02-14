@@ -165,7 +165,7 @@ static void prvSVCHandler( uint32_t *pulRegisters ) __attribute__(( noinline )) 
 static void vPortEnableVFP( void ) __attribute__ (( naked ));
 
 /* Used by gdb client (openocd) to determine how registers are stacked */
-uint8_t uxFreeRTOSRegisterStackingVersion = 2;
+uint8_t uxFreeRTOSRegisterStackingVersion = 3;
 
 /*-----------------------------------------------------------*/
 
@@ -188,6 +188,9 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
 	/* A save method is being used that requires each task to maintain its own exec return value. */
 	pxTopOfStack--;
 	*pxTopOfStack = portINITIAL_EXEC_RETURN;
+
+	pxTopOfStack--;
+	*pxTopOfStack = 0;	/* PSPLIM placeholder, patched by portSETUP_TCB */
 
 	pxTopOfStack -= 9;	/* R11, R10, R9, R8, R7, R6, R5 and R4. */
 
@@ -342,8 +345,9 @@ static void prvRestoreContextOfFirstTask( void )
 		"	stmia r2!, {r4-r11}					\n" /* Write 4 sets of MPU registers. */
 #undef RNR_OFFSET
 #endif
-		"	ldmia r0!, {r3, r4-r11, r14}	\n" /* Pop the registers that are not automatically saved on exception entry. */
+		"	ldmia r0!, {r3, r4-r12, r14}	\n" /* Pop the registers incl. PSPLIM in r12. */
 		"	msr control, r3					\n"
+		"	msr psplim, r12					\n"
 		"	msr psp, r0						\n" /* Restore the task stack pointer. */
 		"	mov r0, #0						\n"
 		"	msr	basepri, r0					\n"
@@ -446,7 +450,8 @@ void xPortPendSVHandler( void )
 #endif
 		"										\n"
 		"	mrs r1, control						\n"
-		"	stmdb r0!, {r1, r4-r11, r14}		\n" /* Save the remaining registers. */
+		"	mrs r12, psplim						\n"
+		"	stmdb r0!, {r1, r4-r12, r14}		\n" /* Save the remaining registers incl. PSPLIM in r12. */
 		"	str r0, [r2]						\n" /* Save the new top of stack into the first member of the TCB. */
 		"										\n"
 		"	stmdb sp!, {r3, r14}				\n"
@@ -508,9 +513,10 @@ void xPortPendSVHandler( void )
 #undef RNR_OFFSET
 #endif
 		"										\n"
-		"	ldmia r0!, {r3, r4-r11, r14}		\n" /* Pop the registers that are not automatically saved on exception entry. */
+		"	ldmia r0!, {r3, r4-r12, r14}		\n" /* Pop the registers incl. PSPLIM in r12. */
 		"										\n"
 		"	msr control, r3						\n"
+		"	msr psplim, r12						\n"
 		"										\n"
 // Using real FPU
 #if defined(__VFP_FP__) && !defined(__SOFTFP__)
@@ -617,7 +623,12 @@ uint32_t ulParameters;
 }
 
 /*-----------------------------------------------------------*/
-void portSetupTCB(void) {
+void portSetupTCB(void *pxTCB) {
+	/* Patch PSPLIM in the initial stack frame. */
+	volatile StackType_t *pxTopOfStack = *(volatile StackType_t **)pxTCB;
+	uintptr_t stackBase = ulTaskGetStackStart((TaskHandle_t)pxTCB);
+	pxTopOfStack[portTASK_REG_INDEX_PSPLIM] = (StackType_t)stackBase;
+
 #if __DCACHE_PRESENT
 	SCB_CleanDCache();
 #endif
@@ -678,6 +689,7 @@ void vPortGetTaskInfo( void *taskHandle, char const *pcTaskName, StackType_t *px
 	{
 		pxTaskInfo->registers[dstIdx] = *pxTopOfStack++;
 	}
+	pxTopOfStack++;   // Skip PSPLIM
 	uint32_t exc_return = *pxTopOfStack++;
 
 	// The xPortPendSVHandler() method saves these extra FP registers (s16-s31)
