@@ -130,6 +130,15 @@ _Static_assert( portNUM_CONFIGURABLE_REGIONS % 4U == 0U,
 
 #define portPSR_STACK_PADDING_MASK				(1UL << 9UL)
 
+// s16-s31 are stacked by the xPortPendSVHandler() (not the CPU)
+#define portNUM_EXTRA_STACKED_FLOATING_POINT_REGS (16)
+
+// s0-s15, fpscr, reserved are stacked by the CPU on exception entry
+#define portNUM_BASIC_STACKED_FLOATING_POINT_REGS (18)
+
+// if bit 4 is 0 it indicates floating point is in use
+#define FLOATING_POINT_ACTIVE(exc_return) ((exc_return & 0x10) == 0)
+
 /* Each task maintains its own interrupt status in the critical nesting
 variable.  Note this is not saved as part of the task context as context
 switches can only occur when uxCriticalNesting is zero. */
@@ -157,7 +166,7 @@ static void prvRestoreContextOfFirstTask( void ) __attribute__(( naked )) PRIVIL
  * C portion of the SVC handler.  The SVC handler is split between an asm entry
  * and a C wrapper for simplicity of coding and maintenance.
  */
-static void prvSVCHandler( uint32_t *pulRegisters ) __attribute__(( noinline )) PRIVILEGED_FUNCTION;
+static void prvSVCHandler( uint32_t *pulRegisters, uint32_t ulExcReturn ) __attribute__(( noinline )) PRIVILEGED_FUNCTION;
 
 /*
  * Function to enable the VFP.
@@ -213,8 +222,9 @@ void vPortSVCHandler( void )
 		#else
 			"	mrs r0, psp						\n"
 		#endif
+			"	mov r1, lr					\n"	/* Pass EXC_RETURN so prvSVCHandler can size the (FP) exception frame. */
 			"	b %0							\n"
-			::"i"(prvSVCHandler):"r0"
+			::"i"(prvSVCHandler):"r0", "r1"
 	);
 }
 /*-----------------------------------------------------------*/
@@ -222,16 +232,17 @@ void vPortSVCHandler( void )
 extern bool xApplicationIsAllowedToRaisePrivilege( uint32_t caller_pc );
 extern void vSetupSyscallRegisters( uint32_t orig_sp, uint32_t *lr_ptr );
 
-static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp )
+static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp, uint32_t ulExcReturn )
 {
-	/* This calculation assumes floating point stacking is disabled
-	 * on exception entry */
-
-	/* The exception frame is laid out as follows:
-	 * {aligner}, xPSR, PC, LR, R12, r3, r2, r1, r0: 0x20 or 0x24 bytes */
+	/* Basic exception frame is 8 words. */
 	uintptr_t original_sp = (uintptr_t)exception_sp + 0x20;
 
-	/* Determine if the aligner exists: */
+	/* With FP context active the CPU also stacks S0-S15, FPSCR and a reserved word. */
+	if (FLOATING_POINT_ACTIVE(ulExcReturn)) {
+		original_sp += portNUM_BASIC_STACKED_FLOATING_POINT_REGS * sizeof(uint32_t);
+	}
+
+	/* xPSR alignment padding word. */
 	if (exception_sp[portOFFSET_TO_PSR] & portPSR_STACK_PADDING_MASK) {
 		original_sp += 4;
 	}
@@ -239,7 +250,7 @@ static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp )
 	return original_sp;
 }
 
-static void prvSVCHandler( uint32_t *pulParam )
+static void prvSVCHandler( uint32_t *pulParam, uint32_t ulExcReturn )
 {
 uint8_t ucSVCNumber;
 
@@ -267,7 +278,7 @@ uint8_t ucSVCNumber;
 												if (xApplicationIsAllowedToRaisePrivilege(caller_pc))
 												{
 													/* Setup necessary information for syscall protection */
-													vSetupSyscallRegisters(prvCalculateOriginalSP(pulParam), pulParam + portOFFSET_TO_LR);
+													vSetupSyscallRegisters(prvCalculateOriginalSP(pulParam, ulExcReturn), pulParam + portOFFSET_TO_LR);
 
 													/* Modify the control register to raise the thread mode privilege level */
 													__asm volatile
@@ -638,14 +649,6 @@ void portSetupTCB(void *pxTCB) {
 }
 
 /*-----------------------------------------------------------*/
-// s16-s31 are stacked by the xPortPendSVHandler() (not the CPU)
-#define portNUM_EXTRA_STACKED_FLOATING_POINT_REGS (16)
-
-// s0-s15, fpscr, reserved are stacked by the CPU on exception entry
-#define portNUM_BASIC_STACKED_FLOATING_POINT_REGS (18)
-
-// if bit 4 is 0 it indicates floating point is in use
-#define FLOATING_POINT_ACTIVE(exc_return) ((exc_return & 0x10) == 0)
 
 uintptr_t ulPortGetStackedPC( StackType_t* pxTopOfStack )
 {
