@@ -232,6 +232,15 @@ void vPortSVCHandler( void )
 extern bool xApplicationIsAllowedToRaisePrivilege( uint32_t caller_pc );
 extern void vSetupSyscallRegisters( uint32_t orig_sp, uint32_t *lr_ptr );
 
+/* Application hook: top of a dedicated privileged syscall stack for the current
+ * task (base in *base_out), or NULL to keep syscalls on the caller's stack. The
+ * weak default keeps the historical behaviour. */
+__attribute__(( weak )) uint32_t *xApplicationGetSyscallStack( uintptr_t *base_out )
+{
+	( void ) base_out;
+	return 0;
+}
+
 static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp, uint32_t ulExcReturn )
 {
 	/* Basic exception frame is 8 words. */
@@ -248,6 +257,55 @@ static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp, uint32_t ulExcR
 	}
 
 	return original_sp;
+}
+
+/* Stack-arg words mirrored onto the syscall stack: syscalls with >4 args read
+ * the extras from the caller's stack, so they must be present here too. */
+#define portSYSCALL_STACK_ARG_WORDS 16U
+
+/* Copy the exception frame onto the current task's dedicated syscall stack (if
+ * any) and switch PSP/PSPLIM so the syscall body runs there. Returns the
+ * stacked-LR slot for vSetupSyscallRegisters. */
+
+static uint32_t *prvRelocateToSyscallStack( uint32_t *pulParam, uint32_t ulExcReturn,
+                                            uintptr_t orig_sp )
+{
+	uintptr_t syscall_base = 0;
+	uint32_t *syscall_top = xApplicationGetSyscallStack( &syscall_base );
+	if ( syscall_top == 0 )
+	{
+		return pulParam + portOFFSET_TO_LR;
+	}
+
+	/* Mirror the caller's stack args; the body resumes just below the copy. */
+	uint32_t *args_dst = syscall_top - portSYSCALL_STACK_ARG_WORDS;
+	const uint32_t *args_src = (const uint32_t *)orig_sp;
+	for ( uint32_t i = 0; i < portSYSCALL_STACK_ARG_WORDS; i++ )
+	{
+		args_dst[ i ] = args_src[ i ];
+	}
+
+	/* Copy the hardware-stacked frame (basic, or extended with FP). */
+	uint32_t frame_words = FLOATING_POINT_ACTIVE( ulExcReturn )
+		? ( 8U + portNUM_BASIC_STACKED_FLOATING_POINT_REGS ) : 8U;
+	uint32_t *dst = args_dst - frame_words;
+	for ( uint32_t i = 0; i < frame_words; i++ )
+	{
+		dst[ i ] = pulParam[ i ];
+	}
+	/* Frame is 8-byte aligned; clear the xPSR padding bit so SP isn't re-adjusted. */
+	dst[ portOFFSET_TO_PSR ] &= ~portPSR_STACK_PADDING_MASK;
+
+	/* Lower the limit before moving PSP; takes effect on exception return. */
+	__asm volatile
+	(
+		"	msr psplim, %0	\n"
+		"	msr psp,    %1	\n"
+		"	isb				\n"
+		:: "r"( syscall_base ), "r"( dst ) :
+	);
+
+	return dst + portOFFSET_TO_LR;
 }
 
 static void prvSVCHandler( uint32_t *pulParam, uint32_t ulExcReturn )
@@ -278,7 +336,9 @@ uint8_t ucSVCNumber;
 												if (xApplicationIsAllowedToRaisePrivilege(caller_pc))
 												{
 													/* Setup necessary information for syscall protection */
-													vSetupSyscallRegisters(prvCalculateOriginalSP(pulParam, ulExcReturn), pulParam + portOFFSET_TO_LR);
+													uintptr_t orig_sp = prvCalculateOriginalSP(pulParam, ulExcReturn);
+													uint32_t *lr_slot = prvRelocateToSyscallStack(pulParam, ulExcReturn, orig_sp);
+													vSetupSyscallRegisters(orig_sp, lr_slot);
 
 													/* Modify the control register to raise the thread mode privilege level */
 													__asm volatile
