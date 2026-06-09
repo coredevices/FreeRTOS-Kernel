@@ -149,7 +149,7 @@ static void prvRestoreContextOfFirstTask( void ) __attribute__(( naked )) PRIVIL
  * C portion of the SVC handler.  The SVC handler is split between an asm entry
  * and a C wrapper for simplicity of coding and maintenance.
  */
-static void prvSVCHandler( uint32_t *pulRegisters ) __attribute__(( noinline )) PRIVILEGED_FUNCTION;
+static void prvSVCHandler( uint32_t *pulRegisters, uint32_t ulExcReturn ) __attribute__(( noinline )) PRIVILEGED_FUNCTION;
 
 /*
  * Function to enable the VFP.
@@ -202,8 +202,9 @@ void vPortSVCHandler( void )
 		#else
 			"	mrs r0, psp						\n"
 		#endif
+			"	mov r1, lr\n"
 			"	b %0							\n"
-			::"i"(prvSVCHandler):"r0"
+			::"i"(prvSVCHandler):"r0", "r1"
 	);
 }
 /*-----------------------------------------------------------*/
@@ -211,14 +212,14 @@ void vPortSVCHandler( void )
 extern bool xApplicationIsAllowedToRaisePrivilege( uint32_t caller_pc );
 extern void vSetupSyscallRegisters( uint32_t orig_sp, uint32_t *lr_ptr );
 
-static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp )
+static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp, uint32_t ulExcReturn )
 {
-	/* This calculation assumes floating point stacking is disabled
-	 * on exception entry */
-
-	/* The exception frame is laid out as follows:
-	 * {aligner}, xPSR, PC, LR, R12, r3, r2, r1, r0: 0x20 or 0x24 bytes */
+	/* Basic exception frame is 8 words; with FP context active the CPU also
+	 * stacks S0-S15, FPSCR and a reserved word (18 words). */
 	uintptr_t original_sp = (uintptr_t)exception_sp + 0x20;
+	if ((ulExcReturn & 0x10) == 0) {
+		original_sp += 18 * sizeof(uint32_t);
+	}
 
 	/* Determine if the aligner exists: */
 	if (exception_sp[portOFFSET_TO_PSR] & SCB_CCR_STKALIGN_Msk) {
@@ -228,7 +229,7 @@ static uintptr_t prvCalculateOriginalSP( uint32_t *exception_sp )
 	return original_sp;
 }
 
-static void prvSVCHandler( uint32_t *pulParam )
+static void prvSVCHandler( uint32_t *pulParam, uint32_t ulExcReturn )
 {
 uint8_t ucSVCNumber;
 
@@ -256,7 +257,7 @@ uint8_t ucSVCNumber;
 												if (xApplicationIsAllowedToRaisePrivilege(caller_pc))
 												{
 													/* Setup necessary information for syscall protection */
-													vSetupSyscallRegisters(prvCalculateOriginalSP(pulParam), pulParam + portOFFSET_TO_LR);
+													vSetupSyscallRegisters(prvCalculateOriginalSP(pulParam, ulExcReturn), pulParam + portOFFSET_TO_LR);
 
 													/* Modify the control register to raise the thread mode privilege level */
 													__asm volatile
