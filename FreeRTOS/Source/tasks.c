@@ -213,7 +213,7 @@ typedef tskTCB TCB_t;
 /*lint -e956 A manual analysis and inspection has been used to determine which
 static variables must be declared volatile. */
 
-__attribute__((section(".kernel_unpriv_ro_bss"), externally_visible))
+__attribute__((externally_visible))
 PRIVILEGED_DATA TCB_t * volatile pxCurrentTCB = NULL;
 
 /* Lists for ready and blocked tasks. --------------------*/
